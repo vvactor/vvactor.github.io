@@ -173,7 +173,7 @@
   </li>
         <li class="menu-item menu-item-other">
 
-    <a href="/other/" rel="section"><i class="fa fa-fw fa-archive"></i>吃瓜</a>
+    <a href="/other/" rel="section"><i class="fa fa-fw fa-archive"></i>其他</a>
 
   </li>
   </ul>
@@ -225,10 +225,16 @@
                 <i class="fa fa-calendar-o"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2020-01-05 12:48:58 / 修改时间：18:50:19" itemprop="dateCreated datePublished" datetime="2020-01-05T12:48:58+08:00">2020-01-05</time>
+              <time title="创建时间：2020-01-05 12:48:58" itemprop="dateCreated datePublished" datetime="2020-01-05T12:48:58+08:00">2020-01-05</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-02-11 18:15:24" itemprop="dateModified" datetime="2020-02-11T18:15:24+08:00">2020-02-11</time>
+              </span>
 
           
 
@@ -250,6 +256,92 @@
 <li><strong>其他功能及内容待开发中。</strong></li>
 </ul>
 <p>感恩相遇，希望能够与大家在分享交流中共同进步~</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2020/01/05/redis-db-consistency/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="vvactor">
+      <meta itemprop="description" content="Make every minute counts!">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="微微爱可多">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2020/01/05/redis-db-consistency/" class="post-title-link" itemprop="url">Redis数据库双写一致性问题 - 缓存删除失败</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2020-01-05 12:48:58" itemprop="dateCreated datePublished" datetime="2020-01-05T12:48:58+08:00">2020-01-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="fa fa-calendar-check-o"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-02-12 14:31:33" itemprop="dateModified" datetime="2020-02-12T14:31:33+08:00">2020-02-12</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%8A%80%E6%9C%AF/" itemprop="url" rel="index">
+                    <span itemprop="name">技术</span>
+                  </a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>Redis是一款基于内存的数据库，虽然在项目中我们常常称其为”缓存”，然而此处的缓存是基于内存的数据库，存在于RAM中，而并非我们操作系统语义范围内比内存存取速度更快的Cache，尽管如此，基于内存的Redis的读写性能也仍然远远高于高度依赖磁盘I/O的数据库存取，项目中我们常常使用Redis提高分布式系统处理高并发的能力。</p>
+<p>假设我们现在有两个线程A和B，A更新数据库成功后删除Redis中的数据，B线程处理读取数据的请求时先访问Redis，如果不命中则访问数据库并将内容更新到Redis中。</p>
+<p>这样的做法流程上看起来是没有问题的，然而当Redis删除失败的时候却无法保证数据的一致性。有些项目的做法是要么等到过期后接口查询主请求查询数据库后主动更新Redis，或者操作场务界面保存触发删除，这两种办法实时性不高，尤其是第二种界面删除的操作过度依赖于人工操作，无法及时的挽救线上故障。</p>
+<p>可选的方案：</p>
+<ol>
+<li>A线程更新数据库，发送事件通知负责处理一致性的线程C；</li>
+<li>C线程负责订阅A线程发送的数据库更新消息，并使用从消息中获取到的key对Redis进行删除操作；</li>
+<li>如果第2步中Redis删除失败，则将这些信息存入Redis中预初始化的list数据结构中；</li>
+<li>C线程重新从list中获得更新数据，重试删除，如果失败再重写回list中，直到Redis删除成功为止。</li>
+</ol>
+<p>其中第4步如果考虑高可用场景可以对Redis开启持久化，以免Redis重启后内存丢失数据list不可用。</p>
 
       
     </div>
@@ -334,9 +426,21 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-count">2</span>
           <span class="site-state-item-name">日志</span>
         </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
 </div>
