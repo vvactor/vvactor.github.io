@@ -46,12 +46,12 @@
   };
 </script>
 
-  <meta name="description" content="三省吾身，知耻后勇">
+  <meta name="description" content="三省吾身">
 <meta property="og:type" content="website">
-<meta property="og:title" content="直止若初的博客">
+<meta property="og:title" content="vvactor的博客">
 <meta property="og:url" content="http://yoursite.com/index.html">
-<meta property="og:site_name" content="直止若初的博客">
-<meta property="og:description" content="三省吾身，知耻后勇">
+<meta property="og:site_name" content="vvactor的博客">
+<meta property="og:description" content="三省吾身">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:author" content="vvactor">
 <meta name="twitter:card" content="summary">
@@ -68,7 +68,7 @@
   };
 </script>
 
-  <title>直止若初的博客</title>
+  <title>vvactor的博客</title>
   
 
 
@@ -112,7 +112,7 @@
     <div>
       <a href="/" class="brand" rel="start">
         <span class="logo-line-before"><i></i></span>
-        <span class="site-title">直止若初的博客</span>
+        <span class="site-title">vvactor的博客</span>
         <span class="logo-line-after"><i></i></span>
       </a>
     </div>
@@ -202,16 +202,101 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://yoursite.com/2020/04/18/idempotence/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="vvactor">
+      <meta itemprop="description" content="三省吾身">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="vvactor的博客">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          
+            <a href="/2020/04/18/idempotence/" class="post-title-link" itemprop="url">高并发场景下如何正确的对数据库进行记录创建与数据更新</a>
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2020-04-18 22:18:31 / 修改时间：22:24:48" itemprop="dateCreated datePublished" datetime="2020-04-18T22:18:31+08:00">2020-04-18</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E6%8A%80%E6%9C%AF/" itemprop="url" rel="index">
+                    <span itemprop="name">技术</span>
+                  </a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>最近在公司的关怀下，我学习了京东零售计算存储平台部资深架构师李玥老师的<a href="https://time.geekbang.org/column/intro/287?utm_source=website&utm_medium=pc&utm_campaign=presell-301&utm_content=0410&utm_term=pc_interstitial_230" target="_blank" rel="noopener">后端存储实战课</a>。其实有关存储的一系列问题我早前也在工作中遇到过一些场景，并且引发过相关的思考和尝试，但是始终没有契机将解决方案整理成文字写下来。如今恰逢<a href="http://vvactor.github.io/" target="_blank" rel="noopener">我的博客</a>开始启用，并且在公司要求记录学习心得的时机下，写下此文，既是我在这门课中其中一小节课的学习心得，同时在有些地方也加入了我个人的发散性思考，希望能将知识传播给更多的朋友，同时对我自己而言也是一种知识的阶段性小结（之所以说是“阶段性”，是因为技术日新月异，我们总会遇到更好的解决方案）。</p>
+<p>在日常的业务场景开发中，后端服务接收到前端发来的HTTP RESTful请求、或者收到由其他服务发来RPC请求从而触发一个数据库更新的事件，这样一种场景是非常典型而普遍的。对于有些小型系统而言，<code>TPS(Transactions Per Second)</code>并不是很高而使得服务压力不大，并且由于工期紧迫等诸多因素的制约，一些设计者在项目初期往往会忽视考虑通过一些严格的系统设计去保证数据更新的正确性。诚然，这样的做法在理想情况和绝大多数情况下是不会出错的，然而就真的万无一失了吗？</p>
+<p>试想这样一种场景，由于前端页面卡顿而导致用户操作不畅，用户狂点鼠标重复提交了多次表单，假设没有任何防重设计，这样势必会在数据库中插入多条重复数据，进而会对我们的业务造成一定的困扰，甚至有可能产生实际的经济损失。此外，随着业务的扩张，用户数逐渐增加，<code>DAU(Daily Active User)</code>不断暴涨，请求并发数激增，有可能会增加发生数据更新错误的<strong>ABA问题</strong>的概率。<strong>ABA问题</strong>我们在下文中会详细描述，其实它在非高并发的典型场景下也是有可能会发生的。</p>
+<p>下面我们将分别针对创建订单和更新订单行情指标数值两种现实中比较典型但是这里是为了举例而虚拟出来的场景来介绍创建记录与数据更新时正确的解决方案。在步入正题之前，我们先来了解2个概念 —— <strong>请求幂等性</strong>和<strong>ABA问题</strong></p>
+<h2 id="概念介绍"><a href="#概念介绍" class="headerlink" title="概念介绍"></a>概念介绍</h2><h3 id="1-请求幂等性"><a href="#1-请求幂等性" class="headerlink" title="1. 请求幂等性"></a>1. 请求幂等性</h3><p>请求幂等性是指，任意多次请求被执行所产生的影响均与一次执行的影响相同。所以对于满足幂等性设计的系统而言，不用担心重复提交多次表单会对系统状态所造成的任何改变，因为无论提交多少次创建订单的请求，数据库里最终只会有此次订单的1份数据。</p>
+<h3 id="2-ABA问题"><a href="#2-ABA问题" class="headerlink" title="2. ABA问题"></a>2. ABA问题</h3><p>我们知道数据库的更新操作update无论执行多少次，在where子句中的条件不变的情况下，最终结果都只可能是我们最终更新的目标值，因此也可以说数据库的更新操作具备<strong>天然幂等</strong>。但是更新数据可能会发生如下场景，例如我们发起一个请求想要更新数据库中某个字段的数值为1，没隔多久又发起一个请求更新该字段为2，正常情况下，更新为1的请求先到达，数据库该字段被更新为1，稍后第二个请求到达，数据库该字段被更新为2。那么不正常的情况下会发生什么呢？请求更新1先到达，数据库该字段被更新为1，请求更新2到达，数据库该字段被更新为2，但是第一个请求更新成功的响应丢失了，调用方没有收到成功响应，发起自动重试，该字段又被更新成了2。这就是<strong>ABA问题</strong>，而且这是在非并发情况下单个请求由于网络状况而触发的ABA问题，那么如果是高并发的场景，服务压力激增，更有可能出现网络拥塞而造成的响应不及时进而导致超时重传。</p>
+<p>了解了这两个概念之后，接下来我们结合两个典型场景分别解锁在标准业务场景下数据库记录创建和数据更新时的正确姿势。</p>
+<h2 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h2><h3 id="1-创建订单"><a href="#1-创建订单" class="headerlink" title="1. 创建订单"></a>1. 创建订单</h3><p>数据库表在最佳实践的情况下，都具有唯一约束性的主键。如果我们采用类似Oracle的sequence进行主键递增插入记录或是其他方式在入库时才生成记录主键，那么就会比较容易向数据库中插入重复的记录。因此我们可以在入库之前，设计一个生成订单编号的服务，这个服务没有参数，返回值是一个全局唯一的订单编号。在用户进入创建订单页面时，前端先向生成订单号的服务发起请求从而响应到一个全局唯一的订单编号，在用户提交订单的时候，将带着这个全局唯一的编号发起请求。当这个请求到达数据库时，由于主键是唯一的，因此无论同时发起了多少个请求，最终数据库里只可能会存在1条该订单的记录。如果想要在入库之前就进行去重，而不将注定要失败的事务提交到数据库从而增加数据库的压力，我这里有一个较为理想的方法，在提交订单之后，在前置一个订单去重服务在处理订单的服务之前，订单去重服务可以借助于布隆过滤器来实现，Redis中有相应的组件，同时我们也可以自己手写一个布隆过滤器，关于布隆过滤器的相关介绍和手写代码示例可以参见我的另一篇博客<a href="https://vvactor.github.io/2020/02/12/bloom-filter/" target="_blank" rel="noopener">缓存穿透解决方案之布隆过滤器详细剖析</a>。</p>
+<h3 id="2-更新订单行情指标数值"><a href="#2-更新订单行情指标数值" class="headerlink" title="2. 更新订单行情指标数值"></a>2. 更新订单行情指标数值</h3><p>假设我们要开发一个订单行情统计的功能给市场部门的老板看。其中某个预测性指标C需要基于当前指标同时结合订单量进行计算，如果这时系统由于并发数激增，A请求和B请求同时获取到了行情表中指标C的数值，A请求先计算完成更新了指标C为C0，B请求随后计算完成又更新了指标C为C1，然而我们知道根据需求，C1的计算需要基于C0，那么B请求拿到的计算结果就不是正确的，这是因为发生了ABA。结合此例和前面所举的例子，经过分析我们很容易看出ABA的关键问题就在于<strong>在修改变量或者字段时，无法记录其状态，例如修改的次数，是否被修改过</strong>。我们可以采取数据库乐观锁的方式解决这个问题，即，在要更新记录的数据库表中新增版本号<code>version</code>字段。更新操作时，与前一次拿到的版本号相比较，如果不一致就拒绝更新数据。假设当前version值为100，sql可以这样来写：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">UPDATE market SET number_c &#x3D; 666, version &#x3D; version + 1 </span><br><span class="line">WHERE version &#x3D; 100 AND record_id &#x3D; XXX;</span><br></pre></td></tr></table></figure>
+
+<h2 id="总结与思考"><a href="#总结与思考" class="headerlink" title="总结与思考"></a>总结与思考</h2><p>这篇博客介绍了我们在对数据库进行新增记录和更新记录时所需要注意的问题。标题中写了高并发三个字，但是通过前面的分析，我们知道即便是在业务非常简单、并发数并不是那么高的系统，也可能会发生重复插入记录、数据更新ABA这类问题。这就需要我们架构师在设计时，结合实际场景，在满足业务需求的情况下谨慎设计，切不可掉以轻心、得过且过。</p>
+<p>最后留几个相关的问题，后续我会针对这些问题继续写一些博客进行解答。</p>
+<p>如何实现全局唯一订单号？</p>
+<p>能否列举一些关于重传的可能性场景？</p>
+<p>幂等性问题真的就只有前端发请求到后端服务才可能出现吗？如果是跨服务的消息，如何保证事务一致性？</p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+        
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block home" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://yoursite.com/2020/04/01/1587/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.png">
       <meta itemprop="name" content="vvactor">
-      <meta itemprop="description" content="三省吾身，知耻后勇">
+      <meta itemprop="description" content="三省吾身">
     </span>
 
     <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="直止若初的博客">
+      <meta itemprop="name" content="vvactor的博客">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
@@ -233,7 +318,7 @@
                   <i class="fa fa-calendar-check-o"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2020-04-17 22:43:45" itemprop="dateModified" datetime="2020-04-17T22:43:45+08:00">2020-04-17</time>
+                <time title="修改时间：2020-04-18 22:28:02" itemprop="dateModified" datetime="2020-04-18T22:28:02+08:00">2020-04-18</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -258,7 +343,7 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          <p>据不完全统计，大约八成以上的程序员朋友都渴望专心从事技术工作，而不同程度的反感复杂的办公室政治、低效而模糊的流程、僵化而暧昧的制度、以及无法改变一些局面的无助和迷茫。</p>
+          <p>许多程序员朋友都渴望专心从事技术工作，而在面对复杂的政治文化、或者更加需要协调的系统化的工作时往往感到迷茫和无助，经常会觉得一些非编程类工作会压缩技术提升的时间和精力，同时又可能觉得自己在专业技能上的技艺不知如何才能应用于现实。</p>
 <p>最近一周多点的时间，我看完了《万历十五年》这本书，是美籍华裔历史学家黄仁宇先生的著作。<strong>先说评价，非常值得一看的一本书。如果你平时对自己身处的社会、体制和自己个人的人生价值有所思考，那么一定会从这本书中有所收获。</strong></p>
 <p>书中讲述了公元1587年也就是明朝万历年间发生的一些看似无关紧要的一些事情，通过对几位历史人物生平际遇的阐述，详细论述了为何作者会认为这一年是大明王朝由盛转衰的转折点。</p>
 <p>1587年，25岁的万历皇帝已经在位16年。而在这高深的宫墙内，是这位年轻皇帝更深的哀叹。他需要去应付许多不变的礼教，重复的做着各种事情，似乎只是那些文官们树立以天下威严而不需要有自己想法的工具人。或许他还想再搏一把有所建树，可每天坐到那把可恶的龙椅上就不由自主的感到生理性厌恶，像极了一个每天Ctrl C + V 的 CRUD Boy。更可恶的是，他提出的一些建议往往被文官们以不合礼教所反对，甚至连自己最爱的儿子都无法立为太子。于是在往后的数年中，直止退休，哦不，退位之前，他都采取着消极怠工的态度，对待那些只会拿规定限制他的迂腐又精致利己的文官们实行非暴力不合作的态度。这样报复于个人来说虽然很爽，但是也在大明王朝这个超级庞大的系统中埋下无数bug，并在他死后一一爆出，直到努尔哈赤和他的儿子们于白水黑山间崛起，夺取了中原政权。</p>
@@ -294,11 +379,11 @@
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.png">
       <meta itemprop="name" content="vvactor">
-      <meta itemprop="description" content="三省吾身，知耻后勇">
+      <meta itemprop="description" content="三省吾身">
     </span>
 
     <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="直止若初的博客">
+      <meta itemprop="name" content="vvactor的博客">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
@@ -402,11 +487,11 @@
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.png">
       <meta itemprop="name" content="vvactor">
-      <meta itemprop="description" content="三省吾身，知耻后勇">
+      <meta itemprop="description" content="三省吾身">
     </span>
 
     <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="直止若初的博客">
+      <meta itemprop="name" content="vvactor的博客">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
@@ -475,11 +560,11 @@
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.png">
       <meta itemprop="name" content="vvactor">
-      <meta itemprop="description" content="三省吾身，知耻后勇">
+      <meta itemprop="description" content="三省吾身">
     </span>
 
     <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="直止若初的博客">
+      <meta itemprop="name" content="vvactor的博客">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
@@ -614,14 +699,14 @@
     <img class="site-author-image" itemprop="image" alt="vvactor"
       src="/images/avatar.png">
   <p class="site-author-name" itemprop="name">vvactor</p>
-  <div class="site-description" itemprop="description">三省吾身，知耻后勇</div>
+  <div class="site-description" itemprop="description">三省吾身</div>
 </div>
 <div class="site-state-wrap motion-element">
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-count">5</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -634,7 +719,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-count">4</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
